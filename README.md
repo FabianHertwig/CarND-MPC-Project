@@ -2,6 +2,108 @@
 Self-Driving Car Engineer Nanodegree Program
 
 ---
+## Project Description
+
+### Overview
+
+The goal of this project is to implement a model predictive controller to steer a vehicle around a racetrack in a simulation. Per timestamp the simulation feeds the vehicles position, speed and heading and waypoints of a trajectory that the car should follow.
+
+From the vehicles position and heading and the reference trajectory the cross track and heading error are calculated by fitting a third order polynomial.
+
+Then by using a bicycle model an optimiser calculates a series of actuator commands to minimize the cross track and heading errors and additionally defined losses.
+
+These actuator commands can be send back to the simulation to steer the vehicle around the track.
+
+### The Model
+
+The model is a bicycle model which does not take friction, inertia or torque into account.
+
+The state consists of the vehicles x and y position, the vehicles heading, the velocity and the cross track error and heading error.
+
+    x,y,psi,v,cte,epsi
+
+The actuators in the model are the steering value [-25 degrees, 25 degrees] and the throttle value [0,1].
+
+The models update equations are as follows. 
+
+- `[t]` denotes the current time step and `[t+1]` the next time step.
+- `Lf` is the distance between the vehicles center of gravity and the front of the vehicle. This describes the vehicles turn rate.
+- `x,y` are the vehicles position.
+- `psi` is the vehicles heading.
+- `v` is the vehicles velocity.
+- `delta` is the steering angle.
+- `cte` is the cross track error.
+- `epsi` is the heading error.
+- `psides` is the heading of the reference trajectory.
+
+
+    x[t+1] = (x[t] + v[t] * cos(psi[t]) * dt);
+    y[t+1] = (y[t] + v[t] * sin(psi[t]) * dt);
+    psi[t+1] = (psi[t] + v[t] * delta[t] / Lf * dt);
+    v[t+1] = (v[t] + a[t] * dt);
+    cte[t+1] = ((f[t] - y[t]) + (v[t] * sin(epsi[t]) * dt));
+    epsi[t+1] = ((psi[t] - psides[t]) + v[t] * delta[t] / Lf * dt);
+
+
+### Timestep Length and Elapsed Duration 
+
+From the class:
+
+*MPC attempts to approximate a continuous reference trajectory by means of discrete paths between actuations. Larger values of dt result in less frequent actuations, which makes it harder to accurately approximate a continuous reference trajectory. This is sometimes called "discretization error".
+A good approach to setting N, dt, and T is to first determine a reasonable range for T and then tune dt and N appropriately, keeping the effect of each in mind.*
+
+I used this approach to first find a reasonable T of 1 Second. Therefore it looks far enough ahead at the track to cover the turns of the track. Then I decreased the dt value until the vehicle was controlled in a stable fashion. I ended up at 0.05 and therefore the N value had to be 20.
+
+### Polynomial Fitting and MPC Preprocessing
+
+The polynomial fitting was done in the vehicle coordinate system. Therefore the trajectory coordinates are transformed to the vehicle coordinate system by substracting the current vehicle position in the global coordinate system.
+
+    for (int i = 0; i < ptsx.size(); ++i) {
+        double shift_x = ptsx[i] - px;
+        double shift_y = ptsy[i] - py;
+
+        ptsx[i] = (shift_x * cos(0-psi) - shift_y * sin(0-psi));
+        ptsy[i] = (shift_x * sin(0-psi) + shift_y * cos(0-psi));
+    } 
+    
+Then a third order polynomial is fitted to the trajectory and the coefficients are used to calculate the cross track error and heading error.
+
+    auto coeffs = polyfit(ptsx_transform, ptsy_transform, 3);
+    
+    double cte = polyeval(coeffs, 0);
+    double epsi = -atan(coeffs[1]);
+    
+Therefore the state without accounting for latency is
+
+    state << 0, 0, 0, v, cte, epsi;
+    
+`x,y,psi` of the state are zero because this is in vehicle coordinates.
+
+### Model Predictive Control with Latency
+
+I found two approaches to deal with latency.
+
+The first is not to use the current state of the vehicle, but predict the vehicles state after latency by using the vehicle model.
+
+The second is to not pass the first actuator commands from the actuator vector to the simulator, but later actuator commands accounted for the latency.
+
+I used the first approach and calculated the vehicle state after some latency.
+
+    // Take latency into account
+    double latency = 0.1;
+
+    double pred_px        = 0.0 + v * latency;
+    const double pred_py  = 0.0;
+    double pred_psi       = 0.0 + v * -steer_value / Lf * latency;
+    double pred_v         = v + throttle_value * latency;
+    double pred_cte       = cte + v * sin(epsi) * latency;
+    double pred_epsi      = epsi + v * -steer_value / Lf * latency;
+
+
+    Eigen::VectorXd state(6);
+    state << pred_px, pred_py, pred_psi, pred_v, pred_cte, pred_epsi;
+
+`x,y,psi` are all zero because these values where transformed to the vehicles coordinate system.
 
 ## Dependencies
 

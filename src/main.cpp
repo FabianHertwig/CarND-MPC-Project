@@ -100,13 +100,11 @@ int main() {
 
                     //Code from self driving project Q&A Youtube video
                     for (int i = 0; i < ptsx.size(); ++i) {
-
                         double shift_x = ptsx[i] - px;
                         double shift_y = ptsy[i] - py;
 
                         ptsx[i] = (shift_x * cos(0-psi) - shift_y * sin(0-psi));
                         ptsy[i] = (shift_x * sin(0-psi) + shift_y * cos(0-psi));
-
                     }
 
                     double *ptrx = &ptsx[0];
@@ -123,9 +121,10 @@ int main() {
                     double steer_value = j[1]["steering_angle"];
                     double throttle_value = j[1]["throttle"];
 
-                    double latency = 0.1;
 
                     // Take latency into account
+                    double latency = 0.1;
+
                     double pred_px        = 0.0 + v * latency;
                     const double pred_py  = 0.0;
                     double pred_psi       = 0.0 + v * -steer_value / Lf * latency;
